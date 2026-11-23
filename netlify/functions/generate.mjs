@@ -8,8 +8,8 @@ export default async (req)=>{
  if(req.method!=="POST")return json({error:"Method not allowed"},405);
  const user=await getUser().catch(()=>null);
  if(user?.email?.toLowerCase()!==OWNER)return json({error:"Owner login required"},401);
- const model=Netlify.env.get("TANK_AI_MODEL") || "gpt-6.1-sol";
- const configuredLimit=Math.min(20,Number(Netlify.env.get("TANK_DAILY_CALL_LIMIT")||"20"));
+ const model=process.env.TANK_AI_MODEL || "gpt-6.1-sol";
+ const configuredLimit=Math.min(20,Number(process.env.TANK_DAILY_CALL_LIMIT||"20"));
  if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>20)return json({error:"AI temporarily unavailable due to invalid configuration."},503);
  const body=await req.json().catch(()=>null);
  if(!body||!ADVISOR_IDS.includes(body.advisorId))return json({error:"Select a valid advisor"},400);
@@ -36,7 +36,7 @@ export default async (req)=>{
   await client.query("COMMIT");reservation=true;
  }catch(e){try{await client.query("ROLLBACK")}catch{}console.error("reservation failed",e);return json({error:"Database unavailable; no AI call made"},503)}finally{client.release()}
  try{
-  if(!Netlify.env.get("OPENAI_BASE_URL"))throw Error("Netlify AI Gateway unavailable");
+  if(!process.env.OPENAI_BASE_URL || !process.env.OPENAI_API_KEY)return json({error:"Netlify AI Gateway credentials are not injected. Check that AI Features are enabled for the Netlify team."},503);
   const openai=new OpenAI();
   const completion=await openai.chat.completions.create({model,messages:[{role:"system",content:buildAdvisorPrompt({advisor,history,topic:topicId})},{role:"user",content:"Contribute one thoughtful response to the latest conversation. Respond only as yourself."}],max_completion_tokens:400});
   const answer=completion.choices?.[0]?.message?.content?.trim();
@@ -55,6 +55,6 @@ export default async (req)=>{
    await writer.query("COMMIT");
    return json({saved:true,seq:saved.seq,advisorId:body.advisorId,answer});
   }catch(e){await writer.query("ROLLBACK");throw e}finally{writer.release()}
- }catch(e){console.error("AI generation failed",e);await db.sql`UPDATE tank_sessions SET status='failed' WHERE id=${sessionId}`.catch(()=>{});return json({error:"AI call failed or response could not be saved. The reserved call may count toward the limit."},502)}
+ }catch(e){console.error("AI generation failed",e);try{await db.pool.query("UPDATE tank_sessions SET status=$1 WHERE id=$2",["failed",sessionId])}catch(cleanupError){console.error("Session cleanup failed",cleanupError)}return json({error:"AI call failed or response could not be saved. The reserved call may count toward the limit."},502)}
 };
 export const config={path:"/api/generate",method:"POST"};
