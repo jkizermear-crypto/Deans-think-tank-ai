@@ -1,0 +1,21 @@
+import {getUser} from "@netlify/identity";
+import {getStore} from "@netlify/blobs";
+import {getDatabase} from "@netlify/database";
+const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
+export default async(req)=>{
+ const user=await getUser().catch(()=>null);
+ if(user?.email?.toLowerCase()!=="jkizermear@gmail.com")return json({error:"Owner login required"},401);
+ const id=new URL(req.url).searchParams.get("id");
+ if(!id||!/^[0-9a-f-]{36}$/.test(id))return json({error:"Invalid attachment ID"},400);
+ const db=getDatabase();
+ const found=await db.sql`SELECT 1 FROM tank_messages WHERE origin='file-extract' AND content LIKE ${"%"+id+"%"} LIMIT 1`;
+ if(!found.length)return json({error:"Attachment not found"},404);
+ const store=getStore({name:"think-tank-private-files",consistency:"strong"});
+ const metadata=await store.getMetadata("original/"+id);
+ if(!metadata)return json({error:"Original attachment unavailable"},404);
+ const name=metadata.metadata?.name||"attachment";
+ const file=await store.get("original/"+id,{type:"arrayBuffer"});
+ if(!file)return json({error:"Original attachment unavailable"},404);
+ return new Response(file,{headers:{"Content-Type":"application/octet-stream","Content-Disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(name),"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
+};
+export const config={path:"/api/attachment",method:"GET"};
