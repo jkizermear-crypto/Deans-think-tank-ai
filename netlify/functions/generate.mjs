@@ -1,0 +1,58 @@
+import OpenAI from "openai";
+import { getUser } from "@netlify/identity";
+import { getDatabase } from "@netlify/database";
+import { buildAdvisorPrompt, ADVISOR_IDS } from "../../lib/advisors.mjs";
+const OWNER="jkizermear@gmail.com";
+const json=(body,status=200)=>Response.json(body,{status,headers:{"Cache-Control":"no-store"}});
+export default async (req)=>{
+ if(req.method!=="POST")return json({error:"Method not allowed"},405);
+ const user=await getUser().catch(()=>null);
+ if(user?.email?.toLowerCase()!==OWNER)return json({error:"Owner login required"},401);
+ const model=Netlify.env.get("TANK_AI_MODEL");
+ const configuredLimit=Number(Netlify.env.get("TANK_DAILY_CALL_LIMIT")||"0");
+ if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>30)return json({error:"AI disabled until a model and positive daily limit are explicitly configured."},503);
+ const body=await req.json().catch(()=>null);
+ if(!body||!ADVISOR_IDS.includes(body.advisorId))return json({error:"Select a valid advisor"},400);
+ const db=getDatabase(),client=await db.pool.connect();
+ let reservation=false, topicId, advisor, history, sessionId=crypto.randomUUID();
+ try{
+  await client.query("BEGIN");
+  const control=(await client.query("SELECT paused,active_topic_id FROM tank_controls WHERE id=1 FOR UPDATE")).rows[0];
+  if(!control||control.paused){await client.query("ROLLBACK");return json({error:"Discussions are paused"},409)}
+  topicId=control.active_topic_id;
+  const topic=(await client.query("SELECT status FROM tank_topics WHERE id=$1",[topicId])).rows[0];
+  if(!topic||topic.status!=="active"){await client.query("ROLLBACK");return json({error:"No active topic"},409)}
+  advisor=(await client.query("SELECT profile FROM tank_advisors WHERE id=$1",[body.advisorId])).rows[0]?.profile;
+  if(!advisor){await client.query("ROLLBACK");return json({error:"Advisor profiles not yet imported"},503)}
+  history=(await client.query("SELECT speaker_id AS \"speakerId\",content FROM tank_messages WHERE topic_id=$1 ORDER BY seq DESC LIMIT 24",[topicId])).rows.reverse();
+  const day=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Chicago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  await client.query("INSERT INTO tank_daily_budget(day,calls,max_calls) VALUES($1,0,$2) ON CONFLICT(day) DO NOTHING",[day,configuredLimit]);
+  const budget=(await client.query("SELECT calls FROM tank_daily_budget WHERE day=$1 FOR UPDATE",[day])).rows[0];
+  if(budget.calls>=configuredLimit){await client.query("ROLLBACK");return json({error:"Daily AI call limit reached"},429)}
+  await client.query("UPDATE tank_daily_budget SET calls=calls+1,max_calls=$2 WHERE day=$1",[day,configuredLimit]);
+  await client.query("INSERT INTO tank_sessions(id,topic_id,status) VALUES($1,$2,'running')",[sessionId,topicId]);
+  await client.query("COMMIT");reservation=true;
+ }catch(e){try{await client.query("ROLLBACK")}catch{}console.error("reservation failed",e);return json({error:"Database unavailable; no AI call made"},503)}finally{client.release()}
+ try{
+  if(!Netlify.env.get("OPENAI_BASE_URL"))throw Error("Netlify AI Gateway unavailable");
+  const openai=new OpenAI();
+  const completion=await openai.chat.completions.create({model,messages:[{role:"system",content:buildAdvisorPrompt({advisor,history,topic:topicId})},{role:"user",content:"Contribute one thoughtful response to the latest conversation. Respond only as yourself."}],max_completion_tokens:400});
+  const answer=completion.choices?.[0]?.message?.content?.trim();
+  if(!answer)throw Error("Empty model output");
+  const writer=await db.pool.connect();
+  try{
+   await writer.query("BEGIN");
+   const current=(await writer.query("SELECT paused,active_topic_id FROM tank_controls WHERE id=1 FOR UPDATE")).rows[0];
+   const topic=(await writer.query("SELECT status FROM tank_topics WHERE id=$1",[topicId])).rows[0];
+   if(current.paused||current.active_topic_id!==topicId||topic?.status!=="active"){
+    await writer.query("UPDATE tank_sessions SET status='cancelled' WHERE id=$1",[sessionId]);
+    await writer.query("COMMIT");return json({error:"Discussion stopped before response could be saved; call was consumed"},409)
+   }
+   const saved=(await writer.query("INSERT INTO tank_messages(message_id,speaker_id,kind,content,topic_id,origin) VALUES($1,$2,$3,$4,$5,'netlify-ai') RETURNING seq",[crypto.randomUUID(),body.advisorId,body.advisorId==="morgan"?"supervisor":"advisor",answer,topicId])).rows[0];
+   await writer.query("UPDATE tank_sessions SET status='completed' WHERE id=$1",[sessionId]);
+   await writer.query("COMMIT");
+   return json({saved:true,seq:saved.seq,advisorId:body.advisorId,answer});
+  }catch(e){await writer.query("ROLLBACK");throw e}finally{writer.release()}
+ }catch(e){console.error("AI generation failed",e);await db.sql`UPDATE tank_sessions SET status='failed' WHERE id=${sessionId}`.catch(()=>{});return json({error:"AI call failed or response could not be saved. The reserved call may count toward the limit."},502)}
+};
+export const config={path:"/api/generate",method:"POST"};
