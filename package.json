@@ -1,0 +1,13 @@
+{
+  "name": "deans-think-tank-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^9.0.0",
+    "openai": "^6.0.0"
+  }
+}
