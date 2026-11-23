@@ -29,8 +29,9 @@ export default async(req)=>{
  const message="[Attached file: "+name+" | id: "+fileId+" | "+content.length+" extracted characters]";
  const db=getDatabase();
  try{
-  const rows=await db.sql`INSERT INTO tank_messages(message_id,speaker_id,kind,content,topic_id,origin) SELECT ${crypto.randomUUID()},'you','user',${message},active_topic_id,'file-extract' FROM tank_controls WHERE id=1 RETURNING seq`;
-  return json({saved:true,seq:rows[0].seq,fileId,filename:name,characters:content.length,truncated:false},{status:201});
+  const result=await db.pool.query("INSERT INTO tank_messages(message_id,speaker_id,kind,content,topic_id,origin) SELECT $1,'you','user',$2,active_topic_id,'file-extract' FROM tank_controls WHERE id=1 RETURNING seq",[crypto.randomUUID(),message]);
+  if(result.rowCount!==1)throw Error("No active room row found");
+  return json({saved:true,seq:result.rows[0].seq,fileId,filename:name,characters:content.length,truncated:false},201);
  }catch(e){console.error("Upload persistence failed",e);return json({error:"Could not save extracted document to the room"},503)}
 };
 export const config={path:"/api/upload",method:"POST"};
