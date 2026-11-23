@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "build": "mkdir -p public/assets && esbuild src/auth.js --bundle --format=esm --platform=browser --outfile=public/assets/auth.js"
   },
   "dependencies": {
     "@netlify/blobs": "^9.0.0",
     "openai": "^6.0.0",
     "@netlify/database": "^1.0.0",
     "@netlify/identity": "^1.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   }
 }
