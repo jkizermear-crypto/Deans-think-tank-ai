@@ -8,9 +8,9 @@ export default async (req)=>{
  if(req.method!=="POST")return json({error:"Method not allowed"},405);
  const user=await getUser().catch(()=>null);
  if(user?.email?.toLowerCase()!==OWNER)return json({error:"Owner login required"},401);
- const model=Netlify.env.get("TANK_AI_MODEL");
- const configuredLimit=Number(Netlify.env.get("TANK_DAILY_CALL_LIMIT")||"0");
- if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>20)return json({error:"AI disabled until a model and positive daily limit are explicitly configured."},503);
+ const model=Netlify.env.get("TANK_AI_MODEL") || "gpt-6.1-sol";
+ const configuredLimit=Math.min(20,Number(Netlify.env.get("TANK_DAILY_CALL_LIMIT")||"20"));
+ if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>20)return json({error:"AI temporarily unavailable due to invalid configuration."},503);
  const body=await req.json().catch(()=>null);
  if(!body||!ADVISOR_IDS.includes(body.advisorId))return json({error:"Select a valid advisor"},400);
  const db=getDatabase(),client=await db.pool.connect();
@@ -25,7 +25,9 @@ export default async (req)=>{
   advisor=(await client.query("SELECT profile FROM tank_advisors WHERE id=$1",[body.advisorId])).rows[0]?.profile;
   if(!advisor){await client.query("ROLLBACK");return json({error:"Advisor profiles not yet imported"},503)}
   history=(await client.query("SELECT speaker_id AS \"speakerId\",content FROM tank_messages WHERE topic_id=$1 ORDER BY seq DESC LIMIT 24",[topicId])).rows.reverse();
-  const day=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Chicago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const parts=new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const getPart=(key)=>parts.find(p=>p.type===key).value;
+  const day=`${getPart("year")}-${getPart("month")}-${getPart("day")}`;
   await client.query("INSERT INTO tank_daily_budget(day,calls,max_calls) VALUES($1,0,$2) ON CONFLICT(day) DO NOTHING",[day,configuredLimit]);
   const budget=(await client.query("SELECT calls FROM tank_daily_budget WHERE day=$1 FOR UPDATE",[day])).rows[0];
   if(budget.calls>=configuredLimit){await client.query("ROLLBACK");return json({error:"Daily AI call limit reached"},429)}
