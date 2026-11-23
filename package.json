@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@netlify/blobs": "^9.0.0",
-    "openai": "^6.0.0"
+    "openai": "^6.0.0",
+    "@netlify/database": "^1.0.0"
   }
 }
