@@ -10,7 +10,7 @@ export default async (req)=>{
  if(user?.email?.toLowerCase()!==OWNER)return json({error:"Owner login required"},401);
  const model=Netlify.env.get("TANK_AI_MODEL");
  const configuredLimit=Number(Netlify.env.get("TANK_DAILY_CALL_LIMIT")||"0");
- if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>30)return json({error:"AI disabled until a model and positive daily limit are explicitly configured."},503);
+ if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>20)return json({error:"AI disabled until a model and positive daily limit are explicitly configured."},503);
  const body=await req.json().catch(()=>null);
  if(!body||!ADVISOR_IDS.includes(body.advisorId))return json({error:"Select a valid advisor"},400);
  const db=getDatabase(),client=await db.pool.connect();
