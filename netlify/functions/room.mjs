@@ -1,8 +1,10 @@
 import { getDatabase } from "@netlify/database";
+import { getUser } from "@netlify/identity";
 const owner = "jkizermear@gmail.com";
 const headers = {"Cache-Control":"no-store"};
 export default async (req,context) => {
- if (!context.user || context.user.email?.toLowerCase() !== owner) return Response.json({error:"Owner login required"},{status:401,headers});
+ const user = await getUser().catch(() => null);
+ if (!user || user.email?.toLowerCase() !== owner) return Response.json({error:"Owner login required"},{status:401,headers});
  const db=getDatabase();
  try {
   if(req.method==="GET"){
