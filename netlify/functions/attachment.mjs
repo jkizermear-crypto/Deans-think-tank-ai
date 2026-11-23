@@ -8,8 +8,8 @@ export default async(req)=>{
  const id=new URL(req.url).searchParams.get("id");
  if(!id||!/^[0-9a-f-]{36}$/.test(id))return json({error:"Invalid attachment ID"},400);
  const db=getDatabase();
- const found=await db.sql`SELECT 1 FROM tank_messages WHERE origin='file-extract' AND content LIKE ${"%"+id+"%"} LIMIT 1`;
- if(!found.length)return json({error:"Attachment not found"},404);
+ const found=await db.pool.query("SELECT 1 FROM tank_messages WHERE origin='file-extract' AND content LIKE $1 LIMIT 1",["%"+id+"%"]);
+ if(!found.rowCount)return json({error:"Attachment not found"},404);
  const store=getStore({name:"think-tank-private-files",consistency:"strong"});
  const metadata=await store.getMetadata("original/"+id);
  if(!metadata)return json({error:"Original attachment unavailable"},404);
