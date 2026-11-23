@@ -36,8 +36,10 @@ export default async (req)=>{
   await client.query("COMMIT");reservation=true;
  }catch(e){try{await client.query("ROLLBACK")}catch{}console.error("reservation failed",e);return json({error:"Database unavailable; no AI call made"},503)}finally{client.release()}
  try{
-  if(!process.env.OPENAI_BASE_URL || !process.env.OPENAI_API_KEY)return json({error:"Netlify AI Gateway credentials are not injected. Check that AI Features are enabled for the Netlify team."},503);
-  const openai=new OpenAI();
+  const hasOpenAI=Boolean(process.env.OPENAI_BASE_URL && process.env.OPENAI_API_KEY);
+  const hasGateway=Boolean(process.env.NETLIFY_AI_GATEWAY_URL && process.env.NETLIFY_AI_GATEWAY_KEY);
+  if(!hasOpenAI&&!hasGateway)return json({error:"Netlify has not supplied AI Gateway credentials to this function. Contact Netlify support with this exact message."},503);
+  const openai=hasOpenAI?new OpenAI():new OpenAI({apiKey:process.env.NETLIFY_AI_GATEWAY_KEY,baseURL:process.env.NETLIFY_AI_GATEWAY_URL});
   const completion=await openai.chat.completions.create({model,messages:[{role:"system",content:buildAdvisorPrompt({advisor,history,topic:topicId})},{role:"user",content:"Contribute one thoughtful response to the latest conversation. Respond only as yourself."}],max_completion_tokens:400});
   const answer=completion.choices?.[0]?.message?.content?.trim();
   if(!answer)throw Error("Empty model output");
