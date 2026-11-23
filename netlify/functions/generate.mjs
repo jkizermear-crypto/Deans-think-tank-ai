@@ -10,8 +10,8 @@ export default async (req)=>{
  const user=await getUser().catch(()=>null);
  if(user?.email?.toLowerCase()!==OWNER)return json({error:"Owner login required"},401);
  const model=process.env.TANK_AI_MODEL || "gpt-6.1-sol";
- const configuredLimit=Math.min(20,Number(process.env.TANK_DAILY_CALL_LIMIT||"20"));
- if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>20)return json({error:"AI temporarily unavailable due to invalid configuration."},503);
+ const configuredLimit=Math.min(30,Number(process.env.TANK_DAILY_CALL_LIMIT||"30"));
+ if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>30)return json({error:"AI temporarily unavailable due to invalid configuration."},503);
  const body=await req.json().catch(()=>null);
  if(!body||!ADVISOR_IDS.includes(body.advisorId))return json({error:"Select a valid advisor"},400);
  const db=getDatabase(),client=await db.pool.connect();
