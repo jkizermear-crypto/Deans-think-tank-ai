@@ -1,5 +1,5 @@
 import { webToolDefinitions } from '../lib/agent-schemas.mjs';
-const registry=document.modelContext;
+const registry=document.modelContext || navigator.modelContext;
 if(registry?.registerTool)for(const tool of webToolDefinitions){
   try{Promise.resolve(registry.registerTool({...tool,async execute(input){
     const response=await fetch('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:tool.name,arguments:input})});
