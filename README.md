@@ -18,3 +18,17 @@ and the existing shared cap of at most 30 calls per Central calendar day.
 pause/cancellation, draft version conflicts, evidence-based profiles and complete
 manuscript pagination. `npm run build` bundles login and browser-agent tools.
 Schema additions are deployed through Netlify’s migration directory.
+
+## Automatic discussion
+
+Sending a message with automatic discussion enabled starts a durable server-side
+background session. Morgan chooses the next speakers. Each separate advisor call
+reads the actual saved conversation and current draft before contributing. Morgan
+then directs another exchange; no new owner message is required between turns.
+Complete proposed chapter and story-bible versions are saved privately.
+
+Queued jobs are claimed once; repeated dispatches cannot repeat paid turns. All
+turns share the existing Central-day 30-call cap. Pause, parked topics, a genuine
+missing author decision, provider errors and the platform working checkpoint stop
+the loop. A native ChatGPT working session takes priority over paid automatic work.
+The browser can close after the background job has started.
