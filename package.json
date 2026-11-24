@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "build": "mkdir -p public/assets && esbuild src/auth.js src/agent-tools.js --bundle --format=esm --platform=browser --outdir=public/assets"
+    "build": "mkdir -p public/assets && esbuild src/auth.js src/agent-tools.js src/workspace.js --bundle --minify --format=esm --platform=browser --outdir=public/assets"
   },
   "dependencies": {
     "@netlify/blobs": "^9.0.0",
