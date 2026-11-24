@@ -14,7 +14,7 @@ export default async (req,context)=>{
  const hasGateway=Boolean(process.env.NETLIFY_AI_GATEWAY_URL && process.env.NETLIFY_AI_GATEWAY_KEY);
  if(!hasOpenAI&&!hasGateway)return json({error:"Live replies are temporarily unavailable. Your message is saved; scheduled writers’ room sessions can still continue."},503);
  const model=process.env.TANK_AI_MODEL || "gpt-6.1-sol";
- const configuredLimit=Math.min(30,Number(process.env.TANK_DAILY_CALL_LIMIT||"30"));
+ const configuredLimit=Number(process.env.TANK_DAILY_CALL_LIMIT||"30");
  if(!model||!Number.isSafeInteger(configuredLimit)||configuredLimit<1||configuredLimit>30)return json({error:"AI temporarily unavailable due to invalid configuration."},503);
  const body=await req.json().catch(()=>null);
  if(!body||!ADVISOR_IDS.includes(body.advisorId))return json({error:"Select a valid advisor"},400);
@@ -43,7 +43,7 @@ export default async (req,context)=>{
  try{
   const openai=hasOpenAI?new OpenAI({timeout:45000,maxRetries:0}):new OpenAI({timeout:45000,maxRetries:0,apiKey:process.env.NETLIFY_AI_GATEWAY_KEY,baseURL:process.env.NETLIFY_AI_GATEWAY_URL});
   let documentContext="";
-  const attachments=history.filter(m=>m.speakerId==="you"&&m.content.startsWith("[Attached file:")).slice(-2);
+  const attachments=(await db.pool.query("SELECT speaker_id AS \"speakerId\",content FROM tank_messages WHERE origin='file-extract' ORDER BY seq DESC LIMIT 2")).rows.reverse();
   if(attachments.length){
    const store=getStore({name:"think-tank-private-files",consistency:"strong"});
    const discussion=history.filter(m=>!m.content.startsWith("[Attached file:")).slice(-8).map(m=>m.content).join(" ").toLowerCase();
