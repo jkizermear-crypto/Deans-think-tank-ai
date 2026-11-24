@@ -1,14 +1,15 @@
-import {getUser} from "@netlify/identity";
+import { ownerUser, sameOrigin } from "../../lib/auth.mjs";
 import {getDatabase} from "@netlify/database";
 import mammoth from "mammoth";
 import {getStore} from "@netlify/blobs";
 import pdf from "pdf-parse";
 const MAX_BYTES=15*1024*1024;
 const json=(body,status=200)=>Response.json(body,{status,headers:{"Cache-Control":"no-store"}});
-export default async(req)=>{
+export default async(req,context)=>{
  if(req.method!=="POST")return json({error:"Method not allowed"},405);
- const user=await getUser().catch(()=>null);
+ const user=await ownerUser(context);
  if(user?.email?.toLowerCase()!=="jkizermear@gmail.com")return json({error:"Owner login required"},401);
+ if(!sameOrigin(req))return json({error:"Use this private room’s own page"},403);
  const form=await req.formData().catch(()=>null),file=form?.get("file");
  const note=typeof form?.get("message")==="string"?form.get("message").trim():"";
  if(note.length>10000)return json({error:"Message must be 10,000 characters or fewer"},400);

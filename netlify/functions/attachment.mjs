@@ -1,9 +1,9 @@
-import {getUser} from "@netlify/identity";
+import { ownerUser } from "../../lib/auth.mjs";
 import {getStore} from "@netlify/blobs";
 import {getDatabase} from "@netlify/database";
 const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
-export default async(req)=>{
- const user=await getUser().catch(()=>null);
+export default async(req,context)=>{
+ const user=await ownerUser(context);
  if(user?.email?.toLowerCase()!=="jkizermear@gmail.com")return json({error:"Owner login required"},401);
  const id=new URL(req.url).searchParams.get("id");
  if(!id||!/^[0-9a-f-]{36}$/.test(id))return json({error:"Invalid attachment ID"},400);

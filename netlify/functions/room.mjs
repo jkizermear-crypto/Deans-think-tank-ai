@@ -1,37 +1,20 @@
-import { getDatabase } from "@netlify/database";
-import { getUser } from "@netlify/identity";
-const owner = "jkizermear@gmail.com";
-const headers = {"Cache-Control":"no-store"};
-export default async (req,context) => {
- const user = await getUser().catch(() => null);
- if (!user || user.email?.toLowerCase() !== owner) return Response.json({error:"Owner login required"},{status:401,headers});
- const db=getDatabase();
+import { getDatabase } from '@netlify/database';
+import { ownerUser, sameOrigin } from '../../lib/auth.mjs';
+import { handleAction, ActionError } from '../../lib/agent-actions.mjs';
+const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
+export default async(req,context)=>{
+ const user=await ownerUser(context);if(!user)return json({error:'Owner login required'},401);
  try {
-  if(req.method==="GET"){
-   const [controls,advisors,topics,messages]=await Promise.all([
-    db.sql`SELECT paused,active_topic_id FROM tank_controls WHERE id=1`,
-    db.sql`SELECT id,profile,version FROM tank_advisors ORDER BY id`,
-    db.sql`SELECT id,title,status FROM tank_topics ORDER BY id`,
-    db.sql`SELECT seq,message_id,speaker_id,kind,content,topic_id,origin,created_at FROM tank_messages ORDER BY seq DESC LIMIT 150`
-   ]);
-   return Response.json({controls:controls[0],advisors,topics,messages:messages.reverse()},{headers});
+  const db=getDatabase();
+  if(req.method==='GET'){
+   const d=await handleAction(db,'get_room_state',{limit:150});
+   return json({...d,ownerEmail:user.email,privateProjectLogin:!!context?.user,controls:{paused:d.room.paused,active_topic_id:d.room.activeTopicId},advisors:d.advisors.map(a=>({id:a.id,profile:a,version:a.version})),messages:d.messages.map(m=>({...m,message_id:m.id,speaker_id:m.speakerId,topic_id:m.topicId,created_at:m.createdAt}))});
   }
-  if(req.method!=="POST") return Response.json({error:"Method not allowed"},{status:405,headers});
-  const body=await req.json().catch(()=>null);
-  if(!body || typeof body!=="object") return Response.json({error:"Invalid JSON"},{status:400,headers});
-  if(body.action==="message"){
-   const content=typeof body.content==="string"?body.content.trim():"";
-   if(!content || content.length>10000) return Response.json({error:"Message must be 1–10000 characters"},{status:400,headers});
-   const id=crypto.randomUUID();
-   const rows=await db.sql`INSERT INTO tank_messages(message_id,speaker_id,kind,content,topic_id,origin) SELECT ${id},'you','user',${content},active_topic_id,'live' FROM tank_controls WHERE id=1 RETURNING seq,message_id`;
-   return Response.json({saved:true,message:rows[0]},{status:201,headers});
-  }
-  if(body.action==="pause"){
-   if(typeof body.paused!=="boolean") return Response.json({error:"Boolean required"},{status:400,headers});
-   const rows=await db.sql`UPDATE tank_controls SET paused=${body.paused} WHERE id=1 RETURNING paused`;
-   return Response.json({controls:rows[0]},{headers});
-  }
-  return Response.json({error:"Unsupported action"},{status:400,headers});
- } catch(e){console.error("room error",e);return Response.json({error:"Room temporarily unavailable"},{status:503,headers})}
+  if(!sameOrigin(req))return json({error:'Use this private room’s own page'},403);
+  const body=await req.json().catch(()=>null);if(!body)return json({error:'Invalid JSON'},400);
+  if(body.action==='pause'&&typeof body.paused==='boolean')return json(await handleAction(db,'set_room_control',{action:body.paused?'pause':'resume'}));
+  if(body.action==='message')return json(await handleAction(db,'append_messages',{messages:[{speakerId:'you',kind:'user',content:body.content,origin:'live'}],idempotencyKey:body.idempotencyKey||crypto.randomUUID()}),201);
+  return json({error:'Unsupported action'},400);
+ }catch(error){if(error instanceof ActionError)return json({error:error.message},error.status);console.error('Room unavailable',{name:error?.name,code:error?.code});return json({error:'Room temporarily unavailable'},503);}
 };
-export const config={path:"/api/room",method:["GET","POST"]};
+export const config={path:'/api/room',method:['GET','POST']};
